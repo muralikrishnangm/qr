@@ -21,15 +21,20 @@ The page also flags choices that tend to break scanners: contrast below roughly
 four modules, or a centre mark larger than the error-correction level can
 rebuild.
 
-## Two things worth setting up once
+## Presets
 
-**Your logo, already loaded.** Commit a `logo.png` next to `index.html` and the
-page picks it up on load, so you don't re-upload it every time.
+**Save preset file** downloads a small `.json` holding everything — colours,
+shape, error-correction level, and the uploaded image itself. Keep it in the
+project folder beside the slides, and the code is reproducible months later, or
+by a co-author who has never opened this page. Drag the file back onto the page,
+or use **Load preset**, to restore it.
 
-**Your colours, one bookmark away.** *Copy settings link* gives you a URL that
-reopens the page with the same colours, shapes, and options — bookmark it as
-your house style. The uploaded image isn't carried in the link; that's what
-`logo.png` is for.
+**Copy a settings link** is the lightweight alternative: a URL you can paste
+into a message or bookmark. It carries every setting except the image, which is
+too large for a URL.
+
+**Commit a `logo.png`** next to `index.html` and the page picks it up on load,
+so a shared group logo is always there without a preset.
 
 ## Choosing settings for a talk
 
@@ -62,8 +67,9 @@ or generating a batch:
 Object.assign(QRPage.settings, { text: "https://example.org", ecl: "H", fg: "#123f6d" });
 QRPage.syncControls();
 QRPage.render();
-const svg = QRPage.buildSVG();   // string
-const pdf = QRPage.buildPDF();   // Uint8Array
+const svg = QRPage.buildSVG();      // string
+const pdf = QRPage.buildPDF();      // Uint8Array
+const preset = QRPage.buildPreset(); // JSON string; QRPage.applyPreset() restores it
 ```
 
 ## How it was checked

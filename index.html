@@ -145,6 +145,11 @@
   .sizerow{display:flex;align-items:center;gap:8px;margin-top:12px;font-size:13px;color:var(--ink-2)}
   .sizerow input{width:92px}
 
+  button.mini{
+    font:inherit;font-size:13.5px;font-weight:520;padding:8px 13px;cursor:pointer;
+    background:var(--panel);color:var(--ink);border:1px solid var(--rule);border-radius:2px;
+  }
+  button.mini:hover{border-color:var(--accent);color:var(--accent)}
   .linkbtn{
     font:inherit;font-size:13px;background:none;border:none;color:var(--accent);
     cursor:pointer;padding:0;text-decoration:underline;text-underline-offset:2px;
@@ -288,9 +293,14 @@
     </section>
 
     <section>
-      <h2>Reuse these settings</h2>
-      <p class="hint">Copies a link that reopens this page with the same colours and options. The uploaded image is not included.</p>
-      <button class="linkbtn" id="preset" type="button">Copy settings link</button>
+      <h2>Presets</h2>
+      <p class="hint">A preset file keeps everything, including the image, so you can drop it in a project folder next to the slides. Drag one back onto this page to reload it.</p>
+      <div class="btns">
+        <button class="mini" id="savePreset" type="button">Save preset file</button>
+        <button class="mini" id="loadPreset" type="button">Load preset</button>
+      </div>
+      <input type="file" id="presetFile" accept=".json,application/json" hidden>
+      <p class="hint" style="margin:12px 0 0">Or <button class="linkbtn" id="preset" type="button">copy a settings link</button> — easier to paste into a message, but it cannot carry the image.</p>
     </section>
 
   </div>
@@ -1073,21 +1083,57 @@ function syncMarkPanels(){
   $("markFgWrap").style.display = S.markType==="text" ? "" : "none";
 }
 
+function setMarkImage(dataURL,name){
+  var img=new Image();
+  img.onload=function(){
+    markImg=img; markImgURL=dataURL; markImgName=name||"image";
+    $("thumb").src=dataURL; $("filename").textContent=markImgName;
+    $("filerow").hidden=false;
+    render();
+  };
+  img.onerror=function(){ toast("That image could not be read"); };
+  img.src=dataURL;
+}
+function clearMarkImage(){
+  markImg=null; markImgURL=""; markImgName="";
+  $("filerow").hidden=true;
+}
 function loadImageFile(file){
   if(!file || !/^image\//.test(file.type)){ toast("That file is not an image"); return; }
   var fr=new FileReader();
-  fr.onload=function(){
-    var img=new Image();
-    img.onload=function(){
-      markImg=img; markImgURL=fr.result; markImgName=file.name;
-      $("thumb").src=fr.result; $("filename").textContent=file.name;
-      $("filerow").hidden=false;
-      render();
-    };
-    img.onerror=function(){ toast("That image could not be read"); };
-    img.src=fr.result;
-  };
+  fr.onload=function(){ setMarkImage(fr.result,file.name); };
   fr.readAsDataURL(file);
+}
+
+/* ---------- preset files ---------- */
+function buildPreset(){
+  var o={ app:"qr-codes-for-slides", presetVersion:1, saved:new Date().toISOString(), settings:{} };
+  KEYS.forEach(function(k){ o.settings[k]=S[k]; });
+  if(markImgURL) o.image={ name:markImgName, dataURL:markImgURL };
+  return JSON.stringify(o,null,1);
+}
+function applyPreset(text){
+  var o=JSON.parse(text);
+  var s=o.settings||o;
+  var found=false;
+  KEYS.forEach(function(k){ if(s[k]!==undefined){ S[k]=s[k]; found=true; } });
+  if(!found) throw new Error("no settings in file");
+  syncControlsFromState();
+  if(o.image&&o.image.dataURL) setMarkImage(o.image.dataURL,o.image.name);
+  else { clearMarkImage(); render(); }
+}
+function loadPresetFile(file){
+  var fr=new FileReader();
+  fr.onload=function(){
+    try { applyPreset(fr.result); toast("Preset loaded"); }
+    catch(e){ toast("That file is not a QR preset"); }
+  };
+  fr.readAsText(file);
+}
+function handleDroppedFile(file){
+  if(!file) return;
+  if(/\.json$/i.test(file.name)||file.type==="application/json") loadPresetFile(file);
+  else loadImageFile(file);
 }
 
 /* ---------- warnings that matter for scanning ---------- */
@@ -1235,11 +1281,32 @@ function syncControlsFromState(){
     drop.addEventListener(ev,function(e){ e.preventDefault(); drop.classList.remove("over"); });
   });
   drop.addEventListener("drop",function(e){
-    if(e.dataTransfer.files[0]) loadImageFile(e.dataTransfer.files[0]);
+    e.stopPropagation();
+    if(e.dataTransfer.files[0]) handleDroppedFile(e.dataTransfer.files[0]);
   });
-  $("clearImg").addEventListener("click",function(){
-    markImg=null; markImgURL=""; markImgName="";
-    $("filerow").hidden=true; render();
+  $("clearImg").addEventListener("click",function(){ clearMarkImage(); render(); });
+
+  // A preset dropped anywhere on the page loads it.
+  ["dragover","drop"].forEach(function(ev){
+    document.addEventListener(ev,function(e){ e.preventDefault(); });
+  });
+  document.addEventListener("drop",function(e){
+    if(e.dataTransfer&&e.dataTransfer.files[0]) handleDroppedFile(e.dataTransfer.files[0]);
+  });
+
+  $("savePreset").addEventListener("click",function(){
+    var blob=new Blob([buildPreset()],{type:"application/json"});
+    var url=URL.createObjectURL(blob);
+    var a=document.createElement("a");
+    a.href=url; a.download=slug()+"-preset.json";
+    document.body.appendChild(a); a.click(); a.remove();
+    setTimeout(function(){ URL.revokeObjectURL(url); },2000);
+    toast("Preset saved");
+  });
+  $("loadPreset").addEventListener("click",function(){ $("presetFile").click(); });
+  $("presetFile").addEventListener("change",function(){
+    if(this.files[0]) loadPresetFile(this.files[0]);
+    this.value="";
   });
 
   $("dlPNG").addEventListener("click",function(){ exportRaster("image/png","png"); });
@@ -1288,6 +1355,8 @@ function syncControlsFromState(){
     buildPDF:buildPDF,
     drawTo:drawCanvas,
     setMarkImage:function(img,dataURL){ markImg=img||null; markImgURL=dataURL||""; },
+    buildPreset:buildPreset,
+    applyPreset:applyPreset,
     syncControls:syncControlsFromState
   };
 })();
